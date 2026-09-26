@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
-      - uses: terraform-linters/setup-tflint@v5
+      - uses: terraform-linters/setup-tflint@v6
       - run: terraform fmt -check -recursive deploy
       - run: terraform -chdir=deploy/aws/bootstrap init -backend=false
       - run: terraform -chdir=deploy/aws/bootstrap validate
