@@ -1,0 +1,17 @@
+aws_region        = "us-east-1"
+name_prefix       = "tableau-hyper-refresher"
+subnet_ids        = ["subnet-example1", "subnet-example2"]
+security_group_ids = ["sg-example"]
+
+tableau_server_url              = "https://example.online.tableau.com"
+tableau_site_id                 = "example-site"
+tableau_secret_arn              = "<tableau-connected-app-secret-arn>"
+tableau_redshift_secret_arn     = "<tableau-redshift-secret-arn>"
+redshift_database               = "analytics"
+redshift_serverless_workgroup   = "analytics-workgroup"
+redshift_data_secret_arn        = "<redshift-data-api-secret-arn>"
+redshift_unload_role_arn        = "<redshift-unload-role-arn>"
+
+tags = {
+  Project = "tableau-hyper-refresher"
+}

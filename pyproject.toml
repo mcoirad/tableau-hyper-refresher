@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tableau-hyper-refresher"
+version = "0.1.0"
+description = "Reference AWS workflow for refreshing Tableau Hyper extracts from Amazon Redshift"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { file = "LICENSE" }
+authors = [{ name = "Tableau Hyper Refresher contributors" }]
+keywords = ["tableau", "hyper", "redshift", "aws", "etl"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "boto3==1.42.16",
+  "PyJWT==2.11.0",
+  "PyYAML==6.0.3",
+  "tableauserverclient==0.40",
+  "tenacity==9.1.4",
+]
+
+[project.optional-dependencies]
+batch = [
+  "lxml==5.4.0",
+  "polars==1.38.1",
+  "redshift-connector==2.1.11",
+  "tableauhyperapi==0.0.24457",
+]
+dev = [
+  "mypy==1.18.2",
+  "pytest==9.0.2",
+  "pytest-cov==7.0.0",
+  "ruff==0.14.13",
+  "types-PyYAML==6.0.12.20250915",
+]
+
+[project.scripts]
+tableau-hyper-refresher = "tableau_hyper_refresher.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tableau_hyper_refresher"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+markers = [
+  "e2e: requires live Tableau, Redshift, and AWS resources",
+  "integration: local integration test",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+exclude = [".venv", ".uv-cache", ".terraform"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["E501", "B905", "B023"]
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+disable_error_code = ["call-overload"]
+
+[[tool.mypy.overrides]]
+module = "tableau_hyper_refresher.tableau_client"
+ignore_errors = true

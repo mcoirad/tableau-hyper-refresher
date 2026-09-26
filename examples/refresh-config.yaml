@@ -1,0 +1,24 @@
+version: 1
+defaults:
+  mode: full_replace
+  primary_key: []
+  sort_column:
+  incremental:
+    enabled: false
+    lookback_minutes: 60
+  delete:
+    mode: none
+    column:
+tables:
+  analytics.events:
+    mode: merge
+    primary_key:
+      - event_id
+    sort_column: updated_at
+    incremental:
+      enabled: true
+      lookback_minutes: 120
+    delete:
+      mode: deleted_at
+      column: deleted_at
+

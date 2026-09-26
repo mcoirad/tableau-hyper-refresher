@@ -1,0 +1,17 @@
+FROM public.ecr.aws/lambda/python:3.12
+
+COPY --from=ghcr.io/astral-sh/uv:0.10.2 /uv /usr/local/bin/uv
+
+COPY pyproject.toml uv.lock README.md LICENSE ${LAMBDA_TASK_ROOT}/
+RUN cd ${LAMBDA_TASK_ROOT} \
+    && uv export --frozen --no-dev --no-emit-project \
+      --output-file /tmp/requirements.txt \
+    && python -m pip install --no-cache-dir --require-hashes \
+      --target ${LAMBDA_TASK_ROOT} -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt
+COPY src ${LAMBDA_TASK_ROOT}/src
+RUN cd ${LAMBDA_TASK_ROOT} \
+    && python -m pip install --no-cache-dir --no-deps --upgrade \
+      --target ${LAMBDA_TASK_ROOT} .
+
+CMD ["tableau_hyper_refresher.lambda_handlers.discover_datasources"]
