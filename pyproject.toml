@@ -29,7 +29,7 @@ batch = [
   "lxml==5.4.0",
   "polars==1.38.1",
   "redshift-connector==2.1.11",
-  "tableauhyperapi==0.0.24457",
+  "tableauhyperapi==0.0.26558",
 ]
 dev = [
   "mypy==1.18.2",
