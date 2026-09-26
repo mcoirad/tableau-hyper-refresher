@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
       - uses: terraform-linters/setup-tflint@v5
       - run: terraform fmt -check -recursive deploy
       - run: terraform -chdir=deploy/aws/bootstrap init -backend=false
