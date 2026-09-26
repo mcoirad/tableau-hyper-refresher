@@ -1,0 +1,17 @@
+.venv/
+.uv-cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+.env
+dist/
+build/
+*.egg-info/
+.DS_Store
+hyperd.log

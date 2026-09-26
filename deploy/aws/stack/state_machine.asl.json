@@ -1,0 +1,344 @@
+{
+  "Comment": "Hyper refresh with a soft-fail production datasource summary.",
+  "StartAt": "Force Full Load Provided?",
+  "States": {
+    "Force Full Load Provided?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.force_full_load",
+          "IsPresent": true,
+          "Next": "Get Hyper Refresh Datasources"
+        }
+      ],
+      "Default": "Set Default Force Full Load"
+    },
+    "Set Default Force Full Load": {
+      "Type": "Pass",
+      "Result": false,
+      "ResultPath": "$.force_full_load",
+      "Next": "Get Hyper Refresh Datasources"
+    },
+    "Get Hyper Refresh Datasources": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "OutputPath": "$.Payload",
+      "Parameters": {
+        "Payload.$": "$",
+        "FunctionName": "${discover_lambda_arn}"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2,
+          "JitterStrategy": "FULL"
+        }
+      ],
+      "Next": "Ensure Datasource Items Field"
+    },
+    "Ensure Datasource Items Field": {
+      "Type": "Pass",
+      "Parameters": {
+        "merged.$": "States.JsonMerge(States.StringToJson('{\"datasource_items\":[]}'), $, false)"
+      },
+      "OutputPath": "$.merged",
+      "Next": "Datasource Items Ready?"
+    },
+    "Datasource Items Ready?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.datasource_items[0]",
+          "IsPresent": true,
+          "Next": "Launch Batch Job Per Datasource"
+        }
+      ],
+      "Default": "Build Datasource Items From Ids"
+    },
+    "Build Datasource Items From Ids": {
+      "Type": "Map",
+      "ItemsPath": "$.datasources",
+      "ResultPath": "$.datasource_items",
+      "Parameters": {
+        "id.$": "$$.Map.Item.Value",
+        "name.$": "$$.Map.Item.Value",
+        "is_production": false
+      },
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "Identity Datasource Item",
+        "States": {
+          "Identity Datasource Item": {
+            "Type": "Pass",
+            "End": true
+          }
+        }
+      },
+      "Next": "Launch Batch Job Per Datasource"
+    },
+    "Launch Batch Job Per Datasource": {
+      "Type": "Map",
+      "ItemsPath": "$.datasource_items",
+      "Parameters": {
+        "datasource_id.$": "$$.Map.Item.Value.id",
+        "force_full_load.$": "$.force_full_load",
+        "stagger_seconds.$": "$$.Map.Item.Index"
+      },
+      "ResultPath": null,
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "Stagger Inspect Start",
+        "States": {
+          "Stagger Inspect Start": {
+            "Type": "Wait",
+            "SecondsPath": "$.stagger_seconds",
+            "Next": "Inspect Tableau Datasources"
+          },
+          "Inspect Tableau Datasources": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::batch:submitJob.sync",
+            "Parameters": {
+              "JobName": "${inspect_job_name}",
+              "JobDefinition": "${inspect_job_definition_arn}",
+              "JobQueue": "${job_queue_arn}",
+              "ContainerOverrides": {
+                "Command.$": "States.Array('inspect','--datasource-id',$.datasource_id,'--force-full-load',States.Format('{}',$.force_full_load))",
+                "Environment": [
+                  {
+                    "Name": "STEP_FUNCTION_EXECUTION_ID",
+                    "Value.$": "$$.Execution.Id"
+                  }
+                ]
+              }
+            },
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "States.ALL"
+                ],
+                "IntervalSeconds": 3,
+                "MaxAttempts": 3,
+                "BackoffRate": 10,
+                "JitterStrategy": "FULL"
+              }
+            ],
+            "End": true
+          }
+        }
+      },
+      "Next": "Get Unload Plan"
+    },
+    "Get Unload Plan": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "Payload": {
+          "STEP_FUNCTION_EXECUTION_ID.$": "$$.Execution.Id"
+        },
+        "FunctionName": "${plan_lambda_arn}"
+      },
+      "ResultSelector": {
+        "tables.$": "$.Payload.tables"
+      },
+      "ResultPath": "$.unload_plan",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2,
+          "JitterStrategy": "FULL"
+        }
+      ],
+      "Next": "Map Unload Redshift Tables"
+    },
+    "Map Unload Redshift Tables": {
+      "Type": "Map",
+      "ItemsPath": "$.unload_plan.tables",
+      "Parameters": {
+        "table_text.$": "$$.Map.Item.Value.table_text",
+        "table_type.$": "$$.Map.Item.Value.type",
+        "table_key.$": "$$.Map.Item.Value.table_key",
+        "datasource_ids_csv.$": "$$.Map.Item.Value.datasource_ids_csv",
+        "stagger_seconds.$": "$$.Map.Item.Index"
+      },
+      "ResultPath": null,
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "Stagger Unload Start",
+        "States": {
+          "Stagger Unload Start": {
+            "Type": "Wait",
+            "SecondsPath": "$.stagger_seconds",
+            "Next": "Unload Redshift Table"
+          },
+          "Unload Redshift Table": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::batch:submitJob.sync",
+            "Parameters": {
+              "JobDefinition": "${unload_job_definition_arn}",
+              "JobQueue": "${job_queue_arn}",
+              "JobName": "${unload_job_name}",
+              "ContainerOverrides": {
+                "Command.$": "States.Array('unload','--table-text',$.table_text,'--table-type',$.table_type,'--table-key',$.table_key,'--datasource-ids',$.datasource_ids_csv,'--s3-bucket','${work_bucket}','--s3-prefix','tables','--refresh-config','${refresh_config_path}')",
+                "Environment": [
+                  {
+                    "Name": "STEP_FUNCTION_EXECUTION_ID",
+                    "Value.$": "$$.Execution.Id"
+                  }
+                ]
+              }
+            },
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "States.ALL"
+                ],
+                "IntervalSeconds": 3,
+                "MaxAttempts": 3,
+                "BackoffRate": 10,
+                "JitterStrategy": "FULL"
+              }
+            ],
+            "End": true
+          }
+        }
+      },
+      "Next": "Map Refresh Data Sources"
+    },
+    "Map Refresh Data Sources": {
+      "Type": "Map",
+      "ItemsPath": "$.datasource_items",
+      "Parameters": {
+        "datasource_id.$": "$$.Map.Item.Value.id",
+        "datasource_name.$": "$$.Map.Item.Value.name",
+        "is_production.$": "$$.Map.Item.Value.is_production",
+        "stagger_seconds.$": "$$.Map.Item.Index"
+      },
+      "ResultPath": "$.refresh_results",
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "Stagger Refresh Start",
+        "States": {
+          "Stagger Refresh Start": {
+            "Type": "Wait",
+            "SecondsPath": "$.stagger_seconds",
+            "Next": "Refresh Data Sources"
+          },
+          "Refresh Data Sources": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::batch:submitJob.sync",
+            "Parameters": {
+              "JobDefinition": "${refresh_job_definition_arn}",
+              "JobQueue": "${job_queue_arn}",
+              "JobName": "${refresh_job_name}",
+              "ContainerOverrides": {
+                "Command.$": "States.Array('refresh','--datasource-id',$.datasource_id,'--s3-bucket','${work_bucket}','--refresh-config','${refresh_config_path}')",
+                "Environment": [
+                  {
+                    "Name": "STEP_FUNCTION_EXECUTION_ID",
+                    "Value.$": "$$.Execution.Id"
+                  }
+                ]
+              }
+            },
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "States.ALL"
+                ],
+                "IntervalSeconds": 3,
+                "MaxAttempts": 3,
+                "BackoffRate": 10,
+                "JitterStrategy": "FULL"
+              }
+            ],
+            "Catch": [
+              {
+                "ErrorEquals": [
+                  "States.ALL"
+                ],
+                "ResultPath": "$.error",
+                "Next": "Record Refresh Failure"
+              }
+            ],
+            "ResultPath": null,
+            "Next": "Record Refresh Success"
+          },
+          "Record Refresh Success": {
+            "Type": "Pass",
+            "Parameters": {
+              "datasource_id.$": "$.datasource_id",
+              "name.$": "$.datasource_name",
+              "is_production.$": "$.is_production",
+              "status": "succeeded"
+            },
+            "End": true
+          },
+          "Record Refresh Failure": {
+            "Type": "Pass",
+            "Parameters": {
+              "datasource_id.$": "$.datasource_id",
+              "name.$": "$.datasource_name",
+              "is_production.$": "$.is_production",
+              "status": "failed",
+              "error.$": "$.error"
+            },
+            "End": true
+          }
+        }
+      },
+      "Next": "Summarize Production Refresh Failures"
+    },
+    "Summarize Production Refresh Failures": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "OutputPath": "$.Payload",
+      "Parameters": {
+        "FunctionName": "${discover_lambda_arn}",
+        "Payload": {
+          "action": "summarize_refresh_results",
+          "refresh_results.$": "$.refresh_results",
+          "datasources.$": "$.datasources",
+          "datasource_items.$": "$.datasource_items",
+          "force_full_load.$": "$.force_full_load"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2,
+          "JitterStrategy": "FULL"
+        }
+      ],
+      "End": true
+    }
+  }
+}
