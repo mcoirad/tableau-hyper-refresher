@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   "boto3==1.42.16",
-  "PyJWT==2.11.0",
+  "PyJWT==2.14.0",
   "PyYAML==6.0.3",
   "tableauserverclient==0.40",
   "tenacity==9.1.4",
