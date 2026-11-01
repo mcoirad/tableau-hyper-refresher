@@ -21,7 +21,7 @@ dependencies = [
   "PyJWT==2.11.0",
   "PyYAML==6.0.3",
   "tableauserverclient==0.40",
-  "tenacity==9.1.4",
+  "tenacity==9.2.1",
 ]
 
 [project.optional-dependencies]
